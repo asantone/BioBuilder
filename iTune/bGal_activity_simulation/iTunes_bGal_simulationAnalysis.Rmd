@@ -1,0 +1,223 @@
+---
+title: 'iTune Analysis'
+author: 'Adam Santone, PhD'
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    code_folding: hide
+---
+
+<!--
+#TODO
+#Generate data points for each promoter-rbs pair
+#combine all data for multiple users
+#generate some data check visualizations
+#generate box plots for each pair
+
+#student section
+#load your data correctly
+#create a simple base R boxplot for one pair
+#create a series of boxplots to compare 
+-->
+
+
+
+```{r setup, include=FALSE}
+#libraries
+library(readr)
+library(ggplot2)
+library(viridis)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(ggstance)
+
+#global options
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE, fig.width = 9.5, fig.height = 6, fig.align = 'center')
+
+#color definitions
+rr<-"#cccccc"      #neutral for the reference
+weak     <-viridis(10)[5] #selected from viridis palette
+medium   <-viridis(10)[7] #selected from viridis palette
+strong   <-viridis(10)[9] #selected from viridis palette
+ww   <-viridis(30)[12]
+wm   <-viridis(30)[14]
+ws   <-viridis(30)[16]
+mw   <-viridis(30)[18]
+mm   <-viridis(30)[20]
+ms   <-viridis(30)[22]
+sw   <-viridis(30)[24]
+sm   <-viridis(30)[26]
+ss   <-viridis(30)[28]
+```
+
+## Introduction
+
+This analysis was created to extend the original [iTune Device](https://biobuilder.org/lab/itune-device/) lesson from [BioBuilder.org](https://biobuilder.org/). The data were gathered from The [iTune-computational-lab multi-trials](https://dsugat.github.io/BioBuilderModels/iTune-computational-lab-multi-trials_Web.html) simulation. 
+
+
+## Simulation Settings
+The simulation was run for each of the following promoter-rbs pairs, known as strains:
+
+* Reference-Reference
+* Weak-Weak
+* Weak-Medium
+* Weak Strong
+* Medium-Weak
+* Medium-Medium
+* Medium-Strong
+* Strong-Weak
+* Strong-Medium
+* Strong-Strong
+
+For each of the ten strains, the following settings were used:
+* Trial duration: 1200 seconds
+* Number of Trials: 30
+* Model speed: maximum
+* All other settings: default values
+
+
+Each simulation run yielded 30 independent b-gal activity data points. For all ten strains, 300 data points were collected. 
+
+## Data Import
+```{r}
+#import all datasets individually
+data_rr<-read_csv("./data/reference_reference.csv")
+data_ww<-read_csv("./data/weak_weak.csv")
+data_wm<-read_csv("./data/weak_medium.csv")
+data_ws<-read_csv("./data/weak_strong.csv")
+data_mw<-read_csv("./data/medium_weak.csv")
+data_mm<-read_csv("./data/medium_medium.csv")
+data_ms<-read_csv("./data/medium_strong.csv")
+data_sw<-read_csv("./data/strong_weak.csv")
+data_sm<-read_csv("./data/strong_medium.csv")
+data_ss<-read_csv("./data/strong_strong.csv")
+
+#combine data
+data_main<-tibble(cbind(data_rr[1], data_rr[2],
+                        data_ww[2], data_wm[2], data_ws[2], 
+                        data_mw[2], data_mm[2], data_ms[2], 
+                        data_sw[2], data_sm[2], data_ss[2]),
+                       .name_repair = ~c("trial","rr","ww","wm","ws","mw","mm","ms","sw","sm","ss"))
+
+#pivot the data
+data_pivot<-data_main %>% pivot_longer(!trial, names_to = "strain", values_to = "activity")
+
+#force the strains to be an ordered factor
+data_pivot$strain <- factor(data_pivot$strain, levels = c("rr","ww","wm","ws","mw","mm","ms","sw","sm","ss"))
+```
+
+
+## Data Visualization
+
+To better understand the data, it's important to look at the *distribution* of the points within each category. Two important statistics related to the distribution are the *mean* and the *standard deviation*. The mean is the center of the points, or the average, while the standard deviation is the spread of the data points around that center. 
+
+```{r}
+#============================
+# data visualization | strain
+#============================
+
+#boxplots to show the distribution of data values
+ggplot(data_pivot, aes(x=strain, y=activity, fill=strain))+
+  geom_boxplot()+
+  scale_fill_manual(values=c(rr,ww,wm,ws,mw,mm,ms,sw,sm,ss))+
+  scale_y_continuous(breaks=seq(0,1500,100))+
+  theme_minimal()+
+  theme(legend.position="bottom")+
+  labs(title="B-gal Activity by Strain", subtitle="iTune Device; BioBuilder.org")+
+  theme(axis.title.y = element_text(angle=0, vjust=0.5))
+```
+
+Let's look at one of these boxes turned sideways and drawn a little bit differently! 
+
+```{r}
+#================================
+# data visualization | density
+#================================
+plot(density(data_main$ss), xlim=c(500,1700), main="Density curve; strong-strong",xlab="activity", ylab="density")
+```
+
+Let's see all of the groups like this! We can split them up or keep them apart. 
+
+```{r}
+#===================================
+# data visualization | density (all)
+#===================================
+ggplot(data=data_pivot, aes(x=activity, group=strain, fill=strain)) +
+    geom_density(alpha=0.2) +
+    xlim(0,1700)+
+    theme_minimal()+
+    theme(axis.title.y = element_text(angle=0, vjust=0.5))
+
+ggplot(data=data_pivot, aes(x=activity, group=strain, fill=strain)) +
+    geom_density(alpha=1.0) +
+    xlim(0,1700)+
+    theme_minimal()+
+   facet_grid(strain ~ .)+
+    theme(axis.title.y = element_text(angle=0, vjust=0.5))
+```
+
+## Analysis of Variance
+
+To determine if there is any statistical difference among these strains, we will use a method that compares the averages of several different groups simultaneously. The idea is to test the hypothesis that all averages are the same. If we find evidence that the hypothesis is not true, we can reject it. The conclusion will then be that there is some difference among the strains' activity level. This method is called ANOVA which stands for "analysis of variance." 
+
+```{r}
+# ANOVA model
+model <- aov(activity ~ strain, data=data_pivot)
+
+# results
+summary(model)
+
+#Tukey Honest Significant Differences (pairwise comparisons)
+#https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/TukeyHSD
+#hsd<-tibble(TukeyHSD(model)$strain, .name_repair = ~c("difference","lowerCI","upperCI","p-value(adjusted)"))
+hsd<-tibble(rownames_to_column(data.frame(TukeyHSD(model)$strain), var = "strain"), 
+            .name_repair = ~c("strain", "difference","lowerCI","upperCI","pValue"))
+
+#add conditional column
+hsd$significant <- ifelse(hsd$pValue <= 0.05,"yes", "no")
+
+#format the table
+kable(hsd, caption = "Tukey Honest Significant Differences") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+### Interpreting the p-value
+P-values represent a probability. Refer to [a good source](https://statisticsbyjim.com/hypothesis-testing/interpreting-p-values/) for more information, but briefly, the p-value in an ANOVA test indicate "the probability of observing a (result) that is at least as extreme as your (result) when you assume that the null hypothesis is true." 
+
+Let's look at this in the context of the iTune activity. Assume for a moment that all strains DO HAVE the same average $\beta$-gal activity. When we conducted our ANOVA, we get to set something called the alpha and we typically will use 0.05 or 5%. If it is true that all strains have the same average activity, then we would expect 5% of our iTune experiments to produce the same (or larger) differences observed here. There are some random effects that can lead to differences between experiments.
+
+As a result, you can think of p-values as "how likely would it be to get what I observed?" 
+
+* Large p-values indicate that your results fit nicely with your original assumption (that all means are the same)
+* Small p-values indicate your observations do not fit nicely and are "statistically significant"
+
+
+## Data Summary
+
+Finally, a table summarizing the calculated means and standard deviations of the data is shown. Although the data were generated and these values were more or less known already, this information is presented as another option for data analysis and would typically be included from real-world observations. 
+
+```{r}
+#=========================
+# data summary
+#=========================
+#create tables
+
+#sorted by strain
+table_strain<-data_pivot %>% group_by(strain) %>% summarise(mean = mean(activity), sd = sd(activity)) %>% arrange(strain)
+
+#sorted by bGal activity
+table_activity<-data_pivot %>% group_by(strain) %>% summarise(mean = mean(activity), sd = sd(activity)) %>% arrange(mean)
+
+#format the table
+kable(table_strain, caption = "B-gal Activity by Strain") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+#format the table
+kable(table_activity, caption = "B-gal Activity by Average Activity") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
